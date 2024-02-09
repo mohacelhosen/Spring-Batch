@@ -2,6 +2,12 @@ package com.store.batch.batch;
 
 import com.store.batch.user.model.User;
 import com.store.batch.user.repository.UserRepository;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.JobRegistry;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.data.RepositoryItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.LineMapper;
@@ -12,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
 public class BatchConfiguration {
@@ -66,16 +73,42 @@ public class BatchConfiguration {
         return userDefaultLineMapper;
     }
 
+    // step 3
     @Bean
     public  UserProcessor userProcessor(){
         return new UserProcessor();
     }
 
+
+    //step 4
     @Bean
-    public RepositoryItemWriter<User> itemWriter(){
+    public RepositoryItemWriter<User> itemWriter() {
         RepositoryItemWriter<User> writer = new RepositoryItemWriter<>();
+
+        // Set the repository to be used by the writer for saving entities
         writer.setRepository(userRepository);
+
+        // Set the name of the repository method to be invoked for saving entities
         writer.setMethodName("save");
+
         return writer;
     }
+
+    @Bean
+    public Step step1(JobRepository jobRepository, PlatformTransactionManager transactionManager){
+        return new StepBuilder("csv-step1", jobRepository) //Initialize a step builder for a step with the given name and job repository
+                .<User, User>chunk(10, transactionManager) // Defines the chunk-oriented processing with a commit interval of 10 items and Sets the transaction manager for the step.
+                .reader(itemReader()) // Specifies the reader for reading input data.
+                .processor(userProcessor()) // Specifies the processor for processing input data.
+                .writer(itemWriter()) // Specifies the writer for writing processed data.
+                .build();
+    }
+
+    @Bean
+    public Job job(JobRepository jobRepository, PlatformTransactionManager transactionManager){
+            return new JobBuilder("csv-job", jobRepository)
+                    .flow(step1(jobRepository, transactionManager))
+                    .end().build();
+    }
+
 }
